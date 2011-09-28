@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 """
 
-__version__ = '$Id: IM-billing.py,v a329020f4e56 2011/09/28 11:24:25 dinko $'
+__version__ = '$Id: IM-billing.py,v cd4a36a9e49f 2011/09/28 15:56:00 dinko $'
 
 import getopt
 import sys
@@ -41,7 +41,7 @@ import gdata.acl.data
 import atom
 
 
-class CalendarExample:
+class IMBilling:
     def __init__(self, email, password):
         # usual Google API init
         self.calendar_service = gdata.calendar.service.CalendarService()
@@ -67,7 +67,8 @@ class CalendarExample:
                 break
         return calID
 
-    def _ParseAndSummarize(self, calendar, start_min, start_max):
+    def _ParseAndSummarize(self, calendar, start_min, start_max,
+            hourly_rate):
         # empty daily work dict
         work_period = dict()
 
@@ -122,7 +123,7 @@ class CalendarExample:
                     hour_sum += old_sum
                     work_period[current_date] = (hour_sum, description)
 
-        # print results (daily sums and descriptions)
+        # print individual daily results
         total_sum = 0
         workdays = 0
         print '%s\t\t%s\t%s' % ('Date', 'Hours', 'Description')
@@ -132,23 +133,29 @@ class CalendarExample:
             total_sum += daily_sum
             workdays += 1
             print '%s\t%d\t%s' % (i, daily_sum, description)
+
+        # print final sums
         print 'Total workhour sum for given period:\t\t%d hours' % total_sum
         print 'Total active days for given period:\t\t%d days' % workdays
+        if hourly_rate is not None:
+            print 'Cumulative price for given period:\t\t%.2f units' % \
+                    (total_sum * float(hourly_rate))
 
-    def Run(self, calendar, start_min, start_max):
-        self._ParseAndSummarize(calendar, start_min, start_max)
+    def Run(self, calendar, start_min, start_max, hourly_rate):
+        self._ParseAndSummarize(calendar, start_min, start_max,
+                hourly_rate)
 
 def usage():
     print 'python IM-billing.py --user username --pw password ' \
             '--calendar calendar_name [ --start YYYY-MM-DD ] ' \
-            '[ --end YYYY-MM-DD ]'
+            '[ --end YYYY-MM-DD ] [ --rate rate_per_hour ]'
     sys.exit(2)
 
 def main():
     # parse command line options
     try:
         opts, args = getopt.getopt(sys.argv[1:], '', ['user=', 'pw=',
-            'calendar=', 'start=', 'end='])
+            'calendar=', 'start=', 'end=', 'rate='])
     except getopt.error, msg:
         usage()
 
@@ -157,6 +164,7 @@ def main():
     calendar = None
     start = None
     end = None
+    rate = None
 
     # Process options
     for o, a in opts:
@@ -170,12 +178,18 @@ def main():
             start = a
         elif o == '--end':
             end = a
+        elif o == '--rate':
+            rate = a
+
+    if pw is None:
+        import getpass
+        pw = getpass.getpass()
 
     if user is None or pw is None or calendar is None:
         usage()
 
-    sample = CalendarExample(user, pw)
-    sample.Run(calendar, start, end)
+    billing = IMBilling(user, pw)
+    billing.Run(calendar, start, end, rate)
 
 if __name__ == '__main__':
     main()
