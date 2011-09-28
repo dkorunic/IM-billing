@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 """
 
-__version__ = '$Id: IM-billing.py,v 29691e0c92d1 2011/09/28 11:16:52 dinko $'
+__version__ = '$Id: IM-billing.py,v a329020f4e56 2011/09/28 11:24:25 dinko $'
 
 import getopt
 import sys
@@ -123,10 +123,17 @@ class CalendarExample:
                     work_period[current_date] = (hour_sum, description)
 
         # print results (daily sums and descriptions)
+        total_sum = 0
+        workdays = 0
         print '%s\t\t%s\t%s' % ('Date', 'Hours', 'Description')
         for i in sorted(work_period.iterkeys()):
             hour_sum, description = work_period[i]
-            print '%s\t%d\t%s' % (i, math.ceil(hour_sum), description)
+            daily_sum = math.ceil(hour_sum)
+            total_sum += daily_sum
+            workdays += 1
+            print '%s\t%d\t%s' % (i, daily_sum, description)
+        print 'Total workhour sum for given period:\t\t%d hours' % total_sum
+        print 'Total active days for given period:\t\t%d days' % workdays
 
     def Run(self, calendar, start_min, start_max):
         self._ParseAndSummarize(calendar, start_min, start_max)
