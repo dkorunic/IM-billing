@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 """
 
-__version__ = '$Id: IM-billing.py,v cd4a36a9e49f 2011/09/28 15:56:00 dinko $'
+__version__ = '$Id: IM-billing.py,v 58e955c18681 2011/09/30 00:06:03 dinko $'
 
 import getopt
 import sys
@@ -77,6 +77,7 @@ class IMBilling:
         query = gdata.calendar.service.CalendarEventQuery( \
                 self._GetCalID(calendar),
                 'private', 'full')
+        query.max_results = 4000
 
         # prepare start/end dates
         time_format = '%Y-%m-%d'
@@ -109,27 +110,27 @@ class IMBilling:
                 current_date = a_when.end_time.split('T')[0]
 
                 # ISO8601 parsing might not work with Python3
-                hour_sum = (dateutil.parser.parse(a_when.end_time) -
+                minute_sum = (dateutil.parser.parse(a_when.end_time) -
                         dateutil.parser.parse(a_when.start_time)).seconds \
-                         / 3600
+                         / 60
 
                 # build dictionary of day work with descriptions and hour
                 # sum
                 if not current_date in work_period:
-                    work_period[current_date] = (hour_sum, description)
+                    work_period[current_date] = (minute_sum, description)
                 else:
                     old_sum, old_description = work_period[current_date]
                     description = ', '.join([old_description, description])
-                    hour_sum += old_sum
-                    work_period[current_date] = (hour_sum, description)
+                    minute_sum += old_sum
+                    work_period[current_date] = (minute_sum, description)
 
         # print individual daily results
         total_sum = 0
         workdays = 0
         print '%s\t\t%s\t%s' % ('Date', 'Hours', 'Description')
         for i in sorted(work_period.iterkeys()):
-            hour_sum, description = work_period[i]
-            daily_sum = math.ceil(hour_sum)
+            minute_sum, description = work_period[i]
+            daily_sum = math.ceil(minute_sum / 60)
             total_sum += daily_sum
             workdays += 1
             print '%s\t%d\t%s' % (i, daily_sum, description)
