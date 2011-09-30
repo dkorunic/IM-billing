@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 """
 
-__version__ = '$Id: IM-billing.py,v 58e955c18681 2011/09/30 00:06:03 dinko $'
+__version__ = '$Id: IM-billing.py,v b36b701eac0f 2011/09/30 15:21:09 dinko $'
 
 import getopt
 import sys
@@ -77,7 +77,7 @@ class IMBilling:
         query = gdata.calendar.service.CalendarEventQuery( \
                 self._GetCalID(calendar),
                 'private', 'full')
-        query.max_results = 4000
+        query.max_results = 10000
 
         # prepare start/end dates
         time_format = '%Y-%m-%d'
@@ -102,17 +102,19 @@ class IMBilling:
         feed = self.calendar_service.CalendarQuery(query)
 
         # parse each of the responses
+        workday_output_format = '%04d-%02d-%02d'
         for i, an_event in zip(xrange(len(feed.entry)), feed.entry):
 
             # parse individual event entries
             for a_when in an_event.when:
                 description = an_event.title.text
-                current_date = a_when.end_time.split('T')[0]
+                start_date = dateutil.parser.parse(a_when.start_time)
+                end_date = dateutil.parser.parse(a_when.end_time)
+                current_date = workday_output_format % (start_date.year,
+                        start_date.month, start_date.day)
 
                 # ISO8601 parsing might not work with Python3
-                minute_sum = (dateutil.parser.parse(a_when.end_time) -
-                        dateutil.parser.parse(a_when.start_time)).seconds \
-                         / 60
+                minute_sum = (end_date - start_date).seconds / 60
 
                 # build dictionary of day work with descriptions and hour
                 # sum
