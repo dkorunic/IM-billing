@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 """
 
-__version__ = '$Id: IM-billing.py,v b36b701eac0f 2011/09/30 15:21:09 dinko $'
+__version__ = '$Id: IM-billing.py,v ff2b024fd66c 2011/10/02 15:27:42 dinko $'
 
 import getopt
 import sys
@@ -107,14 +107,20 @@ class IMBilling:
 
             # parse individual event entries
             for a_when in an_event.when:
+                # event desc
                 description = an_event.title.text
-                start_date = dateutil.parser.parse(a_when.start_time)
-                end_date = dateutil.parser.parse(a_when.end_time)
-                current_date = workday_output_format % (start_date.year,
-                        start_date.month, start_date.day)
 
                 # ISO8601 parsing might not work with Python3
-                minute_sum = (end_date - start_date).seconds / 60
+                start_date = dateutil.parser.parse(a_when.start_time)
+                end_date = dateutil.parser.parse(a_when.end_time)
+
+                # time calculations
+                current_date = workday_output_format % (start_date.year,
+                        start_date.month, start_date.day)
+                time_delta = end_date - start_date
+                minute_sum = time_delta.days * 1440 + \
+                    time_delta.seconds / 60 + \
+                    time_delta.microseconds / 60000000
 
                 # build dictionary of day work with descriptions and hour
                 # sum
@@ -133,6 +139,8 @@ class IMBilling:
         for i in sorted(work_period.iterkeys()):
             minute_sum, description = work_period[i]
             daily_sum = math.ceil(minute_sum / 60)
+            if daily_sum > 24:
+                daily_sum = 24
             total_sum += daily_sum
             workdays += 1
             print '%s\t%d\t%s' % (i, daily_sum, description)
@@ -195,4 +203,9 @@ def main():
     billing.Run(calendar, start, end, rate)
 
 if __name__ == '__main__':
+    try:
+        import psyco
+        psyco.full()
+    except ImportError:
+        pass
     main()
