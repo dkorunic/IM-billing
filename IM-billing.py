@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 """
 
-__version__ = '$Id: IM-billing.py,v ff2b024fd66c 2011/10/02 15:27:42 dinko $'
+__version__ = '$Id: IM-billing.py,v 30f68eeac9ff 2011/10/26 23:17:53 dinko $'
 
 import getopt
 import sys
@@ -138,7 +138,7 @@ class IMBilling:
         print '%s\t\t%s\t%s' % ('Date', 'Hours', 'Description')
         for i in sorted(work_period.iterkeys()):
             minute_sum, description = work_period[i]
-            daily_sum = math.ceil(minute_sum / 60)
+            daily_sum = math.ceil(float(minute_sum) / 60)
             if daily_sum > 24:
                 daily_sum = 24
             total_sum += daily_sum
