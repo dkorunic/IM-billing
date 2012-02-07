@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 """
 
-__version__ = '$Id: IM-billing.py,v 30f68eeac9ff 2011/10/26 23:17:53 dinko $'
+__version__ = '$Id: IM-billing.py,v ae84f692f79e 2012/02/07 11:02:40 dinko $'
 
 import getopt
 import sys
@@ -30,6 +30,7 @@ import time
 import math
 import dateutil
 import dateutil.parser
+import dateutil.tz
 try:
     from xml.etree import ElementTree
 except ImportError:
@@ -94,9 +95,17 @@ class IMBilling:
         else:
             query.start_max = start_max
 
+        # fugly fixups
+        query.start_min = '%sT00:00:00' % query.start_min
+        query.start_max = '%sT23:59:59' % query.start_max
+
         # print headers
         print 'Listing work done on %s project from %s to %s' % \
                 (calendar, query.start_min, query.start_max)
+
+        # implement basic sanity bound checking
+        real_start_max = dateutil.parser.parse(query.start_max).replace(tzinfo=dateutil.tz.tzlocal())
+        real_start_min = dateutil.parser.parse(query.start_min).replace(tzinfo=dateutil.tz.tzlocal())
 
         # execute the query
         feed = self.calendar_service.CalendarQuery(query)
@@ -113,6 +122,11 @@ class IMBilling:
                 # ISO8601 parsing might not work with Python3
                 start_date = dateutil.parser.parse(a_when.start_time)
                 end_date = dateutil.parser.parse(a_when.end_time)
+
+                if start_date < real_start_min or start_date > real_start_max:
+                    print 'Oops, got date out of bounds! Start:', \
+                        start_date, 'End:', end_date
+                    continue
 
                 # time calculations
                 current_date = workday_output_format % (start_date.year,
