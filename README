@@ -1,0 +1,14 @@
+README
+======
+
+INFO:
+This is a simple Google calendar based tracking/billing system. When you
+have a set of tasks performed in your Google calendar with each of the
+entries belonging to a specific "sub" calendar, you can easily print out
+those for a specific (and any) time frame, sum them and make a simple
+billing calculation.
+
+REQUIREMENTS:
+Google Data Python Client: https://code.google.com/p/gdata-python-client/
+ElementTree: already in Python 2.5+
+Dateutil: http://labix.org/python-dateutil
