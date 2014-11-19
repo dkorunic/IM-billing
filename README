@@ -12,3 +12,6 @@ REQUIREMENTS:
 Google APIs for Python: https://developers.google.com/api-client-library/python/start/installation
 Dateutil: http://labix.org/python-dateutil
 Google OAuth2: https://github.com/google/oauth2client
+
+API:
+Google Calendar API: https://developers.google.com/google-apps/calendar/
