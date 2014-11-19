@@ -4,7 +4,7 @@
 """InfoMAR Google calendar billing/time tracking software
 """
 
-__copyright__ = """Copyright (C) 2011  Dinko Korunic, InfoMAR
+__copyright__ = """Copyright (C) 2014  Dinko Korunic, InfoMAR
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -21,132 +21,259 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 """
 
-__version__ = '$Id: IM-billing.py,v d1a1dab55f83 2012/02/07 12:06:28 dinko $'
+__program__ = 'IM-billing'
+__version__ = '1.3'
+__author__ = 'Dinko Korunic'
 
+__readme__ = """
+Installation:
+    pip install --upgrade python-dateutil oauth2client google-api-python-client
+"""
+
+import os
 import getopt
 import sys
-import string
-import time
 import math
+import datetime
 import dateutil
 import dateutil.parser
 import dateutil.tz
-try:
-    from xml.etree import ElementTree
-except ImportError:
-    from elementtree import ElementTree
-import gdata.calendar.data
-import gdata.calendar.client
-import gdata.calendar.service
-import gdata.acl.data
-import atom
+import dateutil.relativedelta
+
+import httplib2
+import oauth2client.file
+import oauth2client.client
+import oauth2client.tools
+
+import apiclient.discovery
 
 
-class IMBilling:
-    def __init__(self, email, password):
-        # usual Google API init
-        self.calendar_service = gdata.calendar.service.CalendarService()
-        self.calendar_service.email = email
-        self.calendar_service.password = password
-        self.calendar_service.source = __version__
-        self.calendar_service.ProgrammaticLogin()
+__API_CLIENT_ID__ = '719895376614-sgqd9vhln9837rj7p8o347cl18ducrhn.apps.googleusercontent.com'
+__API_CLIENT_SECRET__ = 'SgMphHLlmUb8HkvM6sowTW8Q'
+__API_CLIENT_SCOPE__ = 'https://www.googleapis.com/auth/calendar'
+sort_order = {'owner': 1, 'writer': 2,
+              'reader': 3, 'freeBusyReader': 4}
 
-    def _GetCalID(self, calendar):
-        # extract Google Calendar ID: seems like a total hack, but there
-        # is no other way using Google API itself
-        if calendar == 'default' or calendar == 'primary':
-            return 'default'
-        feed = self.calendar_service.GetAllCalendarsFeed()
-        calID = 'default'
 
-        # parse all calendars and get the one we need
-        for i, a_calendar in zip(xrange(len(feed.entry)), feed.entry):
-            if (a_calendar.title.text == calendar):
-                calID = '%s' % a_calendar.GetEditLink().href.split('/')[8]
-                # recode back HTML special characters
-                calID = calID.replace('%40','@').replace('%23','#')
+class IMBilling(object):
+    """
+    IM Billing class.
+
+    :param client_id: Google API Client ID (application specific)
+    :param client_secret: Google API Client Secret (application specific)
+    :param client_scope: Google API Client Scope
+    """
+
+    def __init__(self, client_id=__API_CLIENT_ID__, client_secret=__API_CLIENT_SECRET__,
+                 client_scope=__API_CLIENT_SCOPE__):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.client_scope = client_scope
+        self.auth = None
+        self.calendar_service = None
+        self.calendars = self._get_calendars()
+
+    def _get_calendars(self):
+        """
+        Gets a list of all available Google calendars, sorted by sort_order (owner, writer, reader, freeBusyReader).
+
+        :return: a list of calendars
+        """
+        calendar_list = self._calendar_service().calendarList().list().execute()
+        all_calendars = []
+
+        while True:
+            for cal in calendar_list['items']:
+                all_calendars.append(cal)
+            page_token = calendar_list.get('nextPageToken')
+
+            if page_token:
+                calendar_list = self._calendar_service().calendarList().list().execute()
+            else:
                 break
-        return calID
 
-    def _ParseAndSummarize(self, calendar, start_min, start_max,
-            hourly_rate):
-        # empty daily work dict
-        work_period = dict()
+        all_calendars.sort(lambda x, y: cmp(sort_order[x['accessRole']], sort_order[y['accessRole']]))
 
-        # Google Calendar init
-        self._GetCalID(calendar)
-        query = gdata.calendar.service.CalendarEventQuery( \
-                self._GetCalID(calendar),
-                'private', 'full')
-        query.max_results = 10000
+        return all_calendars
 
-        # prepare start/end dates and do the neccessary fugly conversions
-        time_format_output = '%Y-%m-%dT%H:%M:%S.000Z'
-        time_format_input = '%Y-%m-%d'
-        if start_min is None:
-            # return work in last 60 days
-            query.start_min = time.strftime(time_format_output,
-                    time.gmtime(time.time() - 86400 * 60))
-        else:
-            tuple_time = time.gmtime(time.mktime(time.strptime(start_min,
-                time_format_input)))
-            query.start_min = time.strftime(time_format_output,
-                    tuple_time)
-        if start_max is None:
-            # end time is now!
-            query.start_max = time.strftime(time_format_output,
-                    time.gmtime(time.time()))
-        else:
-            tuple_time = time.gmtime(time.mktime(time.strptime(start_max,
-                time_format_input)))
-            query.start_max = time.strftime(time_format_output,
-                    tuple_time)
+    def _get_cal_id(self, calendar):
+        """
+        Gets a specific Google calendar ID for a first found string match.
 
-        # print headers
-        print 'Listing work done on %s project from %s to %s' % \
-                (calendar, query.start_min, query.start_max)
+        :param calendar: string containing calendar name
+        :return: Google calendar ID
+        """
+        for cal in self.calendars:
+            if cal['summary'].lower() == calendar.lower():
+                return cal['id']
 
-        # execute the query
-        feed = self.calendar_service.CalendarQuery(query)
+        return None
 
-        # parse each of the responses
-        workday_output_format = '%04d-%02d-%02d'
-        for i, an_event in zip(xrange(len(feed.entry)), feed.entry):
+    def _google_auth(self):
+        """
+        Performs a OAuth authentication and reuses existing credentials if possible
 
-            # parse individual event entries
-            for a_when in an_event.when:
-                # event desc
-                description = an_event.title.text
+        :return: OAuth authentication token
+        """
+        if self.auth:
+            return self.auth
+
+        storage = oauth2client.file.Storage(os.path.expanduser('~/.IM-billing.oauth'))
+        credentials = storage.get()
+
+        if credentials is None or True == credentials.invalid:
+            user_agent = ''.join([__program__, '/', __version__])
+            flow = oauth2client.client.OAuth2WebServerFlow(client_id=self.client_id, client_secret=self.client_secret,
+                                                           scope=[self.client_scope], user_agent=user_agent)
+            credentials = oauth2client.tools.run(flow, storage)
+        self.auth = credentials.authorize(httplib2.Http())
+
+        return self.auth
+
+    def _calendar_service(self):
+        """
+        Initializes Calendar Service
+
+        :return: fully initialized Calendar Service for v3 API
+        """
+        if not self.calendar_service:
+            self.calendar_service = apiclient.discovery.build(serviceName='calendar',
+                                                              version='v3', http=self._google_auth())
+
+        return self.calendar_service
+
+    @staticmethod
+    def _parse_events(events_list):
+        """
+        Gets all Google Calendar events as individual items, gets and parses timestamps. Produces sums for each day with
+        concatenated summaries.
+
+        :param events_list: array of events by pages
+        :return: dictionary contaning per-day work summaries
+        """
+        daily_work_summary = dict()
+
+        for event_group in events_list:
+            if 'items' not in event_group:
+                break
+
+            for event in event_group['items']:
+                if 'status' in event and event['status'] == 'cancelled':
+                    continue
+
+                if 'dateTime' in event['start']:
+                    start = event['start']['dateTime']
+                else:
+                    start = event['start']['date']
+                if 'dateTime' in event['end']:
+                    end = event['end']['dateTime']
+                else:
+                    end = event['end']['date']
+
+                if 'description' in event:
+                    desc = event['description'].strip()
+                elif 'summary' in event:
+                    desc = event['summary'].strip()
+                else:
+                    desc = 'unknown'
 
                 # ISO8601 parsing might not work with Python3
-                start_date = dateutil.parser.parse(a_when.start_time)
-                end_date = dateutil.parser.parse(a_when.end_time)
+                start_date = dateutil.parser.parse(start)
+                end_date = dateutil.parser.parse(end)
 
                 # time calculations
-                current_date = workday_output_format % (start_date.year,
-                        start_date.month, start_date.day)
+                current_date = start_date.date().isoformat()
+
                 time_delta = end_date - start_date
-                minute_sum = time_delta.days * 1440 + \
-                    time_delta.seconds / 60 + \
-                    time_delta.microseconds / 60000000
+                minute_sum = time_delta.days * 1440 + time_delta.seconds / 60 + time_delta.microseconds / 60000000
 
                 # build dictionary of day work with descriptions and hour
                 # sum
-                if not current_date in work_period:
-                    work_period[current_date] = (minute_sum, description)
+                if not current_date in daily_work_summary:
+                    daily_work_summary[current_date] = (minute_sum, desc)
                 else:
-                    old_sum, old_description = work_period[current_date]
-                    description = ', '.join([old_description, description])
+                    old_sum, old_desc = daily_work_summary[current_date]
+                    desc = ', '.join([old_desc, desc])
                     minute_sum += old_sum
-                    work_period[current_date] = (minute_sum, description)
+                    daily_work_summary[current_date] = (minute_sum, desc)
 
+        return daily_work_summary
+
+
+    def _get_events(self, calendar_id, start, end):
+        """
+        Gets all possible events within a timeframe defined by (start, end) for a given calendar, page by page.
+
+        :param calendar_id: calendar ID for a specific calendar
+        :param start: start timestamp in RFC3339 format
+        :param end: end timestamp in RFC3339 format
+        :return:
+        """
+        events_list = []
+        event_result = None
+
+        while True:
+            if event_result is None:
+                event_result = self._calendar_service().events().list(calendarId=calendar_id, timeMin=start,
+                                                                      timeMax=end,
+                                                                      singleEvents=True).execute()
+                events_list.append(event_result)
+            else:
+                page_token = event_result.get('nextPageToken')
+                if page_token:
+                    event_result = self._calendar_service().events().list(calendarId=calendar_id,
+                                                                          pageToken=page_token).execute()
+                    events_list.append(event_result)
+                else:
+                    break
+
+        return events_list
+
+    @staticmethod
+    def _get_start_end(start_min, end_max):
+        """
+        Returns start and end timestamps in RFC3339 format. If start is empty, then use -1 month ago. If end is empty,
+        use current timestamp.
+
+        :param start_min: start of search query criteria in any format
+        :param end_max: end of search query criteria in any format
+        :return: returns array with start and end timestamps in RFC3339 format
+        """
+        if start_min is None:
+            # last month
+            start_tmp = datetime.datetime.now() - dateutil.relativedelta.relativedelta(months=1)
+        else:
+            start_tmp = dateutil.parser.parse(start_min)
+
+        if end_max is None:
+            # today!
+            end_tmp = datetime.datetime.now()
+        else:
+            end_tmp = dateutil.parser.parse(end_max)
+
+        # conform to RFC3339 and add local timezones if needed
+        a = [x.replace(tzinfo=dateutil.tz.gettz()) if x.tzinfo is None else x for x in start_tmp, end_tmp]
+        a = [x.isoformat() for x in a]
+
+        return a
+
+    @staticmethod
+    def _print_sums(daily_work_summary, hourly_rate):
         # print individual daily results
+        """
+        Agregates hourly wages and prints daily work summaries
+
+        :param daily_work_summary: already parsed daily aggregated events
+        :param hourly_rate: hourly rate in any unit
+        """
         total_sum = 0
         workdays = 0
+
         print '%s\t\t%s\t%s' % ('Date', 'Hours', 'Description')
-        for i in sorted(work_period.iterkeys()):
-            minute_sum, description = work_period[i]
-            daily_sum = math.ceil(float(minute_sum) / 60)
+
+        for i in sorted(daily_work_summary.iterkeys()):
+            minute_sum, description = daily_work_summary[i]
+            daily_sum = math.ceil(float(minute_sum) / 60.)
             if daily_sum > 24:
                 daily_sum = 24
             total_sum += daily_sum
@@ -154,33 +281,52 @@ class IMBilling:
             print '%s\t%d\t%s' % (i, daily_sum, description)
 
         # print final sums
-        print 'Total workhour sum for given period:\t\t%d hours' % total_sum
-        print 'Total active days for given period:\t\t%d days' % workdays
+        print '\nTotal workhour sum for given period:\t\t%d hours\n' \
+              'Total active days for given period:\t\t%d days' % (total_sum, workdays)
+
         if hourly_rate is not None:
             print 'Cumulative price for given period:\t\t%.2f units' % \
-                    (total_sum * float(hourly_rate))
+                  (total_sum * float(hourly_rate))
 
-    def Run(self, calendar, start_min, start_max, hourly_rate):
-        self._ParseAndSummarize(calendar, start_min, start_max,
-                hourly_rate)
+
+    def run(self, calendar, start_min, end_max, hourly_rate):
+        # get Google Calendar ID
+        """
+        Main class entry point.
+
+        :param calendar: calendar name/description as a string
+        :param start_min: start query/search criteria as a string in any format
+        :param end_max: end query/search criteria as a string in any format
+        :param hourly_rate: hourly wage/rate in any unit
+        """
+        calendar_id = self._get_cal_id(calendar)
+
+        # localize and calculate start and end timestamps
+        start_iso, end_iso = self._get_start_end(start_min, end_max)
+
+        print 'Listing work done on %s project from %s to %s' % (calendar, start_min, end_max)
+
+        events_list = self._get_events(calendar_id, start_iso, end_iso)
+        daily_work_summary = self._parse_events(events_list)
+        self._print_sums(daily_work_summary, hourly_rate)
+
 
 def usage():
     print 'python IM-billing.py --user username --pw password ' \
-            '--calendar calendar_name [ --start YYYY-MM-DD ] ' \
-            '[ --end YYYY-MM-DD ] [ --rate rate_per_hour ]'
+          '--calendar calendar_name [ --start YYYY-MM-DD ] ' \
+          '[ --end YYYY-MM-DD ] [ --rate rate_per_hour ]'
     print 'Please note that --end is exclusive, while --start is inclusive.'
     sys.exit(2)
 
+
 def main():
-    # parse command line options
+    opts = None
+    # noinspection PyUnusedLocal
     try:
-        opts, args = getopt.getopt(sys.argv[1:], '', ['user=', 'pw=',
-            'calendar=', 'start=', 'end=', 'rate='])
+        opts, args = getopt.getopt(sys.argv[1:], '', ['calendar=', 'start=', 'end=', 'rate='])
     except getopt.error, msg:
         usage()
 
-    user = None
-    pw = None
     calendar = None
     start = None
     end = None
@@ -188,11 +334,7 @@ def main():
 
     # Process options
     for o, a in opts:
-        if o == '--user':
-            user = a
-        elif o == '--pw':
-            pw = a
-        elif o == '--calendar':
+        if o == '--calendar':
             calendar = a
         elif o == '--start':
             start = a
@@ -201,20 +343,12 @@ def main():
         elif o == '--rate':
             rate = a
 
-    if pw is None:
-        import getpass
-        pw = getpass.getpass()
-
-    if user is None or pw is None or calendar is None:
+    if calendar is None:
         usage()
 
-    billing = IMBilling(user, pw)
-    billing.Run(calendar, start, end, rate)
+    billing = IMBilling()
+    billing.run(calendar, start, end, rate)
+
 
 if __name__ == '__main__':
-    try:
-        import psyco
-        psyco.full()
-    except ImportError:
-        pass
     main()
