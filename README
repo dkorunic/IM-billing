@@ -9,6 +9,6 @@ those for a specific (and any) time frame, sum them and make a simple
 billing calculation.
 
 REQUIREMENTS:
-Google Data Python Client: https://code.google.com/p/gdata-python-client/
-ElementTree: already in Python 2.5+
+Google APIs for Python: https://developers.google.com/api-client-library/python/start/installation
 Dateutil: http://labix.org/python-dateutil
+Google OAuth2: https://github.com/google/oauth2client
