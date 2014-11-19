@@ -27,7 +27,8 @@ __author__ = 'Dinko Korunic'
 
 __readme__ = """
 Installation:
-    pip install --upgrade python-dateutil oauth2client google-api-python-client
+    pip install --upgrade python-dateutil oauth2client \
+            google-api-python-client python-gflags
 """
 
 import os

@@ -15,3 +15,8 @@ Google OAuth2: https://github.com/google/oauth2client
 
 API:
 Google Calendar API: https://developers.google.com/google-apps/calendar/
+
+INSTALLATION:
+```
+pip install --upgrade python-dateutil oauth2client google-api-python-client python-gflags
+```
