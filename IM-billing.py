@@ -313,8 +313,7 @@ class IMBilling(object):
 
 
 def usage():
-    print 'python IM-billing.py --user username --pw password ' \
-          '--calendar calendar_name [ --start YYYY-MM-DD ] ' \
+    print 'python IM-billing.py --calendar calendar_name [ --start YYYY-MM-DD ] ' \
           '[ --end YYYY-MM-DD ] [ --rate rate_per_hour ]'
     print 'Please note that --end is exclusive, while --start is inclusive.'
     sys.exit(2)
