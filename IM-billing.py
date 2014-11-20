@@ -190,7 +190,7 @@ class IMBilling(object):
 
                 # build dictionary of day work with descriptions and hour
                 # sum
-                if not current_date in daily_work_summary:
+                if current_date not in daily_work_summary:
                     daily_work_summary[current_date] = (minute_sum, desc)
                 else:
                     old_sum, old_desc = daily_work_summary[current_date]
@@ -199,7 +199,6 @@ class IMBilling(object):
                     daily_work_summary[current_date] = (minute_sum, desc)
 
         return daily_work_summary
-
 
     def _get_events(self, calendar_id, start, end):
         """
@@ -313,6 +312,9 @@ class IMBilling(object):
 
 
 def usage():
+    """
+    Print usage.
+    """
     print 'python IM-billing.py --calendar calendar_name [ --start YYYY-MM-DD ] ' \
           '[ --end YYYY-MM-DD ] [ --rate rate_per_hour ]'
     print 'Please note that --end is exclusive, while --start is inclusive.'
@@ -320,6 +322,9 @@ def usage():
 
 
 def main():
+    """
+    Default code entrypoint.
+    """
     opts = None
     # noinspection PyUnusedLocal
     try:
