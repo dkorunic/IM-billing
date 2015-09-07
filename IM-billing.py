@@ -278,7 +278,7 @@ class IMBilling(object):
                 daily_sum = 24
             total_sum += daily_sum
             workdays += 1
-            print '%s\t%d\t%s' % (i, daily_sum, description)
+            print '%s\t%d\t%s' % (i, daily_sum, description.encode('UTF-8', errors='ignore'))
 
         # print final sums
         print '\nTotal workhour sum for given period:\t\t%d hours\n' \
