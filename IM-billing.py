@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # -*- coding: iso-8859-1 -*-
 
 """InfoMAR Google calendar billing/time tracking software
@@ -126,7 +126,7 @@ class IMBilling(object):
             user_agent = ''.join([__program__, '/', __version__])
             flow = oauth2client.client.OAuth2WebServerFlow(client_id=self.client_id, client_secret=self.client_secret,
                                                            scope=[self.client_scope], user_agent=user_agent)
-            credentials = oauth2client.tools.run(flow, storage)
+            credentials = oauth2client.tools.run_flow(flow, storage, oauth2client.tools.argparser.parse_args([]))
         self.auth = credentials.authorize(httplib2.Http())
 
         return self.auth
