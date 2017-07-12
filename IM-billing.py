@@ -22,7 +22,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 """
 
 __program__ = 'IM-billing'
-__version__ = '1.3'
+__version__ = '1.4'
 __author__ = 'Dinko Korunic'
 
 __readme__ = """
@@ -31,23 +31,21 @@ Installation:
             google-api-python-client python-gflags
 """
 
-import os
-import getopt
-import sys
-import math
 import datetime
-import dateutil
-import dateutil.parser
-import dateutil.tz
-import dateutil.relativedelta
-
-import httplib2
-import oauth2client.file
-import oauth2client.client
-import oauth2client.tools
+import getopt
+import math
+import os
+import sys
 
 import apiclient.discovery
-
+import dateutil
+import dateutil.parser
+import dateutil.relativedelta
+import dateutil.tz
+import httplib2
+import oauth2client.client
+import oauth2client.file
+import oauth2client.tools
 
 __API_CLIENT_ID__ = '719895376614-sgqd9vhln9837rj7p8o347cl18ducrhn.apps.googleusercontent.com'
 __API_CLIENT_SECRET__ = 'SgMphHLlmUb8HkvM6sowTW8Q'
@@ -122,7 +120,7 @@ class IMBilling(object):
         storage = oauth2client.file.Storage(os.path.expanduser('~/.IM-billing.oauth'))
         credentials = storage.get()
 
-        if credentials is None or True == credentials.invalid:
+        if credentials is None or credentials.invalid:
             user_agent = ''.join([__program__, '/', __version__])
             flow = oauth2client.client.OAuth2WebServerFlow(client_id=self.client_id, client_secret=self.client_secret,
                                                            scope=[self.client_scope], user_agent=user_agent)
@@ -144,15 +142,19 @@ class IMBilling(object):
         return self.calendar_service
 
     @staticmethod
-    def _parse_events(events_list):
+    def _parse_events(events_list, search):
         """
         Gets all Google Calendar events as individual items, gets and parses timestamps. Produces sums for each day with
         concatenated summaries.
 
         :param events_list: array of events by pages
+        :param search: substring to search in each of the events
         :return: dictionary contaning per-day work summaries
         """
         daily_work_summary = dict()
+
+        def __remove_prefix(text, prefix):
+            return text[text.startswith(prefix) and len(prefix):]
 
         for event_group in events_list:
             if 'items' not in event_group:
@@ -177,6 +179,14 @@ class IMBilling(object):
                     desc = event['summary'].strip()
                 else:
                     desc = 'unknown'
+
+                # skip over events without search substring
+                if search:
+                    if not desc.startswith(search):
+                        continue
+                    else:
+                        desc = __remove_prefix(desc, ''.join([search, ' ']))
+                        desc = __remove_prefix(desc, search)
 
                 # ISO8601 parsing might not work with Python3
                 start_date = dateutil.parser.parse(start)
@@ -258,7 +268,7 @@ class IMBilling(object):
         return a
 
     @staticmethod
-    def _print_sums(daily_work_summary, hourly_rate):
+    def _print_sums(daily_work_summary, hourly_rate, search):
         # print individual daily results
         """
         Agregates hourly wages and prints daily work summaries
@@ -278,7 +288,10 @@ class IMBilling(object):
                 daily_sum = 24
             total_sum += daily_sum
             workdays += 1
-            print '%s\t%d\t%s' % (i, daily_sum, description.encode('UTF-8', errors='ignore'))
+            if search:
+                print '%s - %dh - %s' % (i, daily_sum, description.encode('UTF-8', errors='ignore'))
+            else:
+                print '%s\t%d\t%s' % (i, daily_sum, description.encode('UTF-8', errors='ignore'))
 
         # print final sums
         print '\nTotal workhour sum for given period:\t\t%d hours\n' \
@@ -288,8 +301,7 @@ class IMBilling(object):
             print 'Cumulative price for given period:\t\t%.2f units' % \
                   (total_sum * float(hourly_rate))
 
-
-    def run(self, calendar, start_min, end_max, hourly_rate):
+    def run(self, calendar, start_min, end_max, hourly_rate, search):
         # get Google Calendar ID
         """
         Main class entry point.
@@ -298,6 +310,7 @@ class IMBilling(object):
         :param start_min: start query/search criteria as a string in any format
         :param end_max: end query/search criteria as a string in any format
         :param hourly_rate: hourly wage/rate in any unit
+        :param search: substring to search in every calendar event
         """
         calendar_id = self._get_cal_id(calendar)
 
@@ -307,8 +320,8 @@ class IMBilling(object):
         print 'Listing work done on %s project from %s to %s' % (calendar, start_min, end_max)
 
         events_list = self._get_events(calendar_id, start_iso, end_iso)
-        daily_work_summary = self._parse_events(events_list)
-        self._print_sums(daily_work_summary, hourly_rate)
+        daily_work_summary = self._parse_events(events_list, search)
+        self._print_sums(daily_work_summary, hourly_rate, search)
 
 
 def usage():
@@ -316,7 +329,7 @@ def usage():
     Print usage.
     """
     print 'python IM-billing.py --calendar calendar_name [ --start YYYY-MM-DD ] ' \
-          '[ --end YYYY-MM-DD ] [ --rate rate_per_hour ]'
+          '[ --end YYYY-MM-DD ] [ --rate rate_per_hour ] [ --search string ]'
     print 'Please note that --end is exclusive, while --start is inclusive.'
     sys.exit(2)
 
@@ -328,7 +341,7 @@ def main():
     opts = None
     # noinspection PyUnusedLocal
     try:
-        opts, args = getopt.getopt(sys.argv[1:], '', ['calendar=', 'start=', 'end=', 'rate='])
+        opts, args = getopt.getopt(sys.argv[1:], '', ['calendar=', 'start=', 'end=', 'rate=', 'search='])
     except getopt.error, msg:
         usage()
 
@@ -336,6 +349,7 @@ def main():
     start = None
     end = None
     rate = None
+    search = None
 
     # Process options
     for o, a in opts:
@@ -347,12 +361,14 @@ def main():
             end = a
         elif o == '--rate':
             rate = a
+        elif o == '--search':
+            search = a
 
     if calendar is None:
         usage()
 
     billing = IMBilling()
-    billing.run(calendar, start, end, rate)
+    billing.run(calendar, start, end, rate, search)
 
 
 if __name__ == '__main__':
