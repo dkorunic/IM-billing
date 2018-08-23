@@ -225,13 +225,13 @@ class IMBilling(object):
         while True:
             if event_result is None:
                 event_result = self._calendar_service().events().list(calendarId=calendar_id, timeMin=start,
-                                                                      timeMax=end,
-                                                                      singleEvents=True).execute()
+                                                                      timeMax=end, singleEvents=True).execute()
                 events_list.append(event_result)
             else:
                 page_token = event_result.get('nextPageToken')
                 if page_token:
-                    event_result = self._calendar_service().events().list(calendarId=calendar_id,
+                    event_result = self._calendar_service().events().list(calendarId=calendar_id, timeMin=start,
+                                                                          timeMax=end, singleEvents=True,
                                                                           pageToken=page_token).execute()
                     events_list.append(event_result)
                 else:
