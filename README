@@ -1,6 +1,9 @@
 README
 ======
 
+NOTE:
+This program has been obsoleted by IM-billing-v2, a complete rewrite: https://github.com/dkorunic/IM-billing-v2
+
 INFO:
 This is a simple Google calendar based tracking/billing system. When you
 have a set of tasks performed in your Google calendar with each of the
